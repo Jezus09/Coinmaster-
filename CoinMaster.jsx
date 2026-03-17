@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Lilita+One&display=swap');
@@ -85,6 +85,26 @@ body{background:#06001a;font-family:'Lilita One',cursive;overflow:hidden;}
 
 /* Shield indicator */
 .shield-hud{font-size:22px;filter:drop-shadow(0 0 6px #4488ff);}
+
+/* Reel win flash */
+.reel.win{border-color:#FFD600;box-shadow:0 0 18px #FFD600,inset 0 0 10px #FFD60033;animation:winFlash .5s ease 3;}
+@keyframes winFlash{0%,100%{border-color:#FF6B00;}50%{border-color:#FFD600;box-shadow:0 0 28px #FFD600,inset 0 0 14px #FFD60044;}}
+
+/* Result text */
+.result-text{text-align:center;min-height:32px;font-size:20px;color:#FFD600;animation:coinPop .4s ease;margin-bottom:4px;text-shadow:0 0 12px #FFD600;}
+.result-text.miss{color:#888;font-size:14px;animation:none;}
+
+/* Spin timer bar */
+.spin-timer-wrap{display:flex;align-items:center;gap:8px;padding:2px 16px 4px;justify-content:center;}
+.spin-timer-label{color:#888;font-size:11px;white-space:nowrap;}
+.spin-timer-bar{flex:1;height:4px;background:#1a0a3a;border-radius:2px;overflow:hidden;max-width:160px;}
+.spin-timer-fill{height:100%;background:linear-gradient(90deg,#FF6B00,#FFD600);border-radius:2px;transition:width 1s linear;}
+
+/* Building level badge */
+.bld-badge{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FF6B00,#FFD600);color:#06001a;font-size:10px;padding:1px 7px;border-radius:10px;white-space:nowrap;pointer-events:none;}
+
+/* Jackpot flash */
+@keyframes jackpotBg{0%,100%{background:#06001a;}50%{background:#1a0a00;}}
 
 @keyframes lampRun{0%,100%{opacity:1;box-shadow:0 0 8px #FFD600;}50%{opacity:0.15;box-shadow:none;}}
 @keyframes reelBlur{0%{filter:blur(10px);transform:scaleY(1.08);}100%{filter:blur(0);transform:scaleY(1);}}
@@ -471,7 +491,7 @@ function RaidModal({bet, onClose, onCoins}){
 }
 
 // ---- Attack Modal ----
-function AttackModal({shield, buildings, onClose, onShieldUsed, onBuildingHit}){
+function AttackModal({shield, onClose, onShieldUsed, onBuildingHit}){
   const opponent = useRef(OPPONENTS[rand(0,OPPONENTS.length-1)]).current;
   const buildingKey = useRef(BKEYS[rand(0,BKEYS.length-1)]).current;
   const blocked = shield;
@@ -534,15 +554,38 @@ function UpgradePanel({building, coins, buildings, onUpgrade, onClose}){
 }
 
 // ---- Slot Screen ----
-function SlotScreen({coins, spins, bet, setBet, shield, village, reels, spinning, onSpinDown, onSpinUp, onNav}){
+function SlotScreen({coins, spins, bet, setBet, shield, village, reels, spinning, lastResult, spinTimerPct, onSpinDown, onSpinUp, onNav}){
   const lightPositions = [
     {top:"6%",left:"12%"},{top:"6%",left:"30%"},{top:"6%",left:"50%"},{top:"6%",left:"70%"},{top:"6%",left:"88%"},
     {top:"50%",left:"96%"},{top:"94%",left:"88%"},{top:"94%",left:"70%"},{top:"94%",left:"50%"},{top:"94%",left:"30%"},
     {top:"50%",left:"2%"},
   ];
 
+  // Cycle symbols during spin
+  const [displayReels, setDisplayReels] = useState(reels);
+  useEffect(()=>{
+    if(spinning){
+      const id = setInterval(()=>{
+        setDisplayReels([weightedRand(),weightedRand(),weightedRand()]);
+      },90);
+      return ()=>clearInterval(id);
+    } else {
+      setDisplayReels(reels);
+    }
+  },[spinning, reels]);
+
   function handleTouchStart(e){ e.preventDefault(); onSpinDown(); }
   function handleTouchEnd(e){ e.preventDefault(); onSpinUp(); }
+
+  // Determine which reels are part of a win
+  const [a,b,c] = reels;
+  const win3 = !spinning && a===b && b===c;
+  const win2 = !spinning && !win3 && (a===b||b===c||a===c);
+  const reelWin = win3
+    ? [true,true,true]
+    : win2
+      ? [a===b||a===c, a===b||b===c, a===c||b===c]
+      : [false,false,false];
 
   return <div style={{display:"flex",flexDirection:"column",height:"100vh",maxHeight:"100vh"}}>
     {/* HUD */}
@@ -567,10 +610,18 @@ function SlotScreen({coins, spins, bet, setBet, shield, village, reels, spinning
       </div>
     </div>
 
+    {/* Spin timer bar */}
+    <div className="spin-timer-wrap">
+      <div className="spin-timer-label">+5 forgatas:</div>
+      <div className="spin-timer-bar">
+        <div className="spin-timer-fill" style={{width:spinTimerPct+"%"}}/>
+      </div>
+    </div>
+
     {/* Bet row */}
     <div className="bet-row">
-      {[1,2,3].map(b=>(
-        <button key={b} className={"bet-btn"+(bet===b?" active":"")} onClick={()=>setBet(b)}>{b}x</button>
+      {[1,2,3].map(bv=>(
+        <button key={bv} className={"bet-btn"+(bet===bv?" active":"")} onClick={()=>setBet(bv)}>{bv}x</button>
       ))}
     </div>
 
@@ -583,10 +634,15 @@ function SlotScreen({coins, spins, bet, setBet, shield, village, reels, spinning
           ))}
         </div>
         <div className="cabinet-inner">
+          {/* Result text */}
+          <div className={lastResult && lastResult.text ? "result-text"+(lastResult.win?"":" miss") : "result-text miss"}>
+            {lastResult ? lastResult.text : ""}
+          </div>
           <div className="reels-row">
-            {reels.map((sym,i)=>{
+            {displayReels.map((sym,i)=>{
               const Sym = SYM_COMPONENTS[sym];
-              return <div key={i} className={"reel"+(spinning?" spinning":"")}>
+              const cls = "reel"+(spinning?" spinning":"")+(reelWin[i]?" win":"");
+              return <div key={i} className={cls}>
                 <div className="reel-sym"><Sym/></div>
               </div>;
             })}
@@ -635,12 +691,15 @@ function VillageScreen({coins, village, buildings, onBuildingTap, selBuilding, o
           return <div
             key={slot.id}
             className="building-slot"
-            style={{left:slot.left, top:slot.top}}
+            style={{left:slot.left, top:slot.top, position:"absolute"}}
             onClick={()=>onBuildingTap(slot)}
           >
             {lvl===0
               ? <div className="building-placeholder">+</div>
-              : <Comp level={lvl}/>
+              : <div style={{position:"relative"}}>
+                  <Comp level={lvl}/>
+                  <div className="bld-badge">Lv{lvl} {slot.name}</div>
+                </div>
             }
           </div>;
         })}
@@ -661,52 +720,70 @@ function VillageScreen({coins, village, buildings, onBuildingTap, selBuilding, o
 
 // ---- Village Done Overlay ----
 function VillageDoneOverlay({village}){
-  const fwItems = [];
-  for(let i=0;i<18;i++){
-    const hue = i*20;
-    const cx = 20+rand(0,80);
-    const cy = 10+rand(0,80);
-    fwItems.push(
-      <div key={i} className="fw-star" style={{
-        width:rand(8,20)+"px",height:rand(8,20)+"px",
-        left:cx+"%",top:cy+"%",
-        background:`hsl(${hue},100%,60%)`,
-        animationDelay:`${i*0.08}s`,
-        animationDuration:`${1+rand(0,10)*0.1}s`
-      }}/>
-    );
-  }
+  const fwItems = useMemo(()=>{
+    const items = [];
+    for(let i=0;i<22;i++){
+      const hue = i*16;
+      const cx = 5+rand(0,90);
+      const cy = 5+rand(0,90);
+      items.push({hue, cx, cy, w:rand(8,22), h:rand(8,22), dur:1+rand(0,10)*0.1});
+    }
+    return items;
+  },[]);
+
   return <div className="village-done">
-    {fwItems}
+    {fwItems.map((fw,i)=>(
+      <div key={i} className="fw-star" style={{
+        width:fw.w+"px", height:fw.h+"px",
+        left:fw.cx+"%", top:fw.cy+"%",
+        background:`hsl(${fw.hue},100%,60%)`,
+        animationDelay:`${i*0.07}s`,
+        animationDuration:`${fw.dur}s`
+      }}/>
+    ))}
     <h1>Falu kesz!</h1>
     <p style={{color:"#FFD600",fontSize:"20px",marginTop:"12px"}}>Falu {village} teljesitve!</p>
     <p style={{color:"#ccc",fontSize:"14px",marginTop:"8px"}}>Uj falu kezdodik...</p>
   </div>;
 }
 
+// ---- localStorage helpers ----
+const LS_KEY = "cm_save_v1";
+function loadSave(){
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch(_){ return null; }
+}
+function mkDefault(){ return {coins:500,spins:50,bet:1,shield:false,village:1,buildings:{longhouse:0,windmill:0,tavern:0,blacksmith:0,castle:0}}; }
+
 // ---- App ----
 export default function App(){
-  const [coins, setCoins] = useState(500);
-  const [spins, setSpins] = useState(50);
-  const [bet, setBet] = useState(1);
-  const [shield, setShield] = useState(false);
-  const [village, setVillage] = useState(1);
-  const [buildings, setBuildings] = useState({longhouse:0,windmill:0,tavern:0,blacksmith:0,castle:0});
+  const saved = useMemo(()=>loadSave()||mkDefault(),[]);
+  const [coins, setCoins] = useState(saved.coins);
+  const [spins, setSpins] = useState(saved.spins);
+  const [bet, setBet] = useState(saved.bet);
+  const [shield, setShield] = useState(saved.shield);
+  const [village, setVillage] = useState(saved.village);
+  const [buildings, setBuildings] = useState(saved.buildings);
   const [screen, setScreen] = useState("slot");
   const [spinning, setSpinning] = useState(false);
   const [reels, setReels] = useState([0,0,0]);
+  const [lastResult, setLastResult] = useState(null);
   const [raidOpen, setRaidOpen] = useState(false);
   const [attackOpen, setAttackOpen] = useState(false);
   const [selBuilding, setSelBuilding] = useState(null);
   const [toast, setToast] = useState(null);
   const [villageDone, setVillageDone] = useState(false);
+  const [spinTimerPct, setSpinTimerPct] = useState(0);
 
   const autoSpinRef = useRef(null);
   const holdTimerRef = useRef(null);
   const spinningRef = useRef(false);
-  const spinsRef = useRef(50);
-  const betRef = useRef(1);
-  const villageRef = useRef(1);
+  const spinsRef = useRef(saved.spins);
+  const betRef = useRef(saved.bet);
+  const villageRef = useRef(saved.village);
+  const timerStartRef = useRef(Date.now());
 
   // Keep refs in sync
   useEffect(()=>{ spinningRef.current = spinning; },[spinning]);
@@ -714,15 +791,36 @@ export default function App(){
   useEffect(()=>{ betRef.current = bet; },[bet]);
   useEffect(()=>{ villageRef.current = village; },[village]);
 
+  // Persist state to localStorage
+  useEffect(()=>{
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({coins,spins,bet,shield,village,buildings}));
+    } catch(_){}
+  },[coins,spins,bet,shield,village,buildings]);
+
+  // Spin timer progress bar
+  useEffect(()=>{
+    const id = setInterval(()=>{
+      const elapsed = (Date.now()-timerStartRef.current) % 60000;
+      setSpinTimerPct(Math.floor(elapsed/600));
+    },1000);
+    return ()=>clearInterval(id);
+  },[]);
+
   // Toast helper
   const showToast = useCallback((msg)=>{
     setToast(msg);
     setTimeout(()=>setToast(null),2000);
   },[]);
 
-  // Spin timer: +5 spins every 60s
+  // Spin timer: +5 spins every 60s, reset progress bar
   useEffect(()=>{
-    const id = setInterval(()=>setSpins(s=>s+5),60000);
+    const id = setInterval(()=>{
+      setSpins(s=>s+5);
+      timerStartRef.current = Date.now();
+      setSpinTimerPct(0);
+      showToast && showToast("+5 Ingyen Forgatas!");
+    },60000);
     return ()=>clearInterval(id);
   },[]);
 
@@ -744,28 +842,37 @@ export default function App(){
       if(a===0){
         const won = rand(50,200)*curBet*mult;
         setCoins(co=>co+won);
+        setLastResult({text:"JACKPOT! +"+won+" erme!", win:true});
         showToast("JACKPOT! +"+won+" erme!");
         setRaidOpen(true);
       } else if(a===1){
+        setLastResult({text:"Tamadas!", win:false});
         setAttackOpen(true);
       } else if(a===2){
         setShield(true);
+        setLastResult({text:"Pajzs aktivalva!", win:true});
         showToast("Pajzs aktivalva! Vedve vagy!");
       } else if(a===3){
+        setLastResult({text:"Rablotamas!", win:true});
         setRaidOpen(true);
         showToast("Rablotamas!");
       } else if(a===4){
         setSpins(s=>s+10);
+        setLastResult({text:"+10 Forgatas!", win:true});
         showToast("+10 Forgatas!");
       }
     } else if(a===b||b===c||a===c){
       const won = rand(5,20)*curBet;
       setCoins(co=>co+won);
+      setLastResult({text:"+"+won+" erme", win:true});
       showToast("+"+won+" erme");
     } else if(a===0||b===0||c===0){
       const won = 10*curBet;
       setCoins(co=>co+won);
+      setLastResult({text:"+"+won+" erme", win:true});
       showToast("+"+won+" erme");
+    } else {
+      setLastResult({text:"Semmi...", win:false});
     }
   },[showToast]);
 
@@ -837,7 +944,6 @@ export default function App(){
     {raidOpen && <RaidModal bet={bet} onClose={()=>setRaidOpen(false)} onCoins={onRaidCoins}/>}
     {attackOpen && <AttackModal
       shield={shield}
-      buildings={buildings}
       onClose={()=>setAttackOpen(false)}
       onShieldUsed={onAttackShieldUsed}
       onBuildingHit={onAttackBuildingHit}
@@ -848,6 +954,7 @@ export default function App(){
       ? <SlotScreen
           coins={coins} spins={spins} bet={bet} setBet={setBet}
           shield={shield} village={village} reels={reels} spinning={spinning}
+          lastResult={lastResult} spinTimerPct={spinTimerPct}
           onSpinDown={onSpinDown} onSpinUp={onSpinUp}
           onNav={()=>setScreen("village")}
         />
