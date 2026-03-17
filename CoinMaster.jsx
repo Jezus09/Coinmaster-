@@ -93,12 +93,13 @@ body{background:#06001a;font-family:'Lilita One',cursive;overflow:hidden;}
 @keyframes digBounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
 @keyframes fw{0%,100%{transform:skewX(0deg);}50%{transform:skewX(5deg);}}
 @keyframes twinkle{0%,100%{opacity:1;}50%{opacity:0.15;}}
-@keyframes slideUp{from{transform:translateX(-50%) translateY(100%);}to{transform:translateX(-50%) translateY(0);}}
+@keyframes slideUp{from{transform:translateX(-50%) translateY(110%);}to{transform:translateX(-50%) translateY(0);}}
 @keyframes fireworks{0%{opacity:0;transform:scale(0.5);}50%{opacity:1;transform:scale(1.1);}100%{opacity:0;transform:scale(1.3);}}
 @keyframes toastIn{from{transform:translateX(-50%) translateY(-80px);opacity:0;}to{transform:translateX(-50%) translateY(0);opacity:1;}}
 @keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
 @keyframes hammerSwing{0%{transform:rotate(-35deg);}100%{transform:rotate(25deg);}}
 @keyframes spin360{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+@keyframes windmillSpin{from{transform-origin:center;transform:rotate(0deg);}to{transform-origin:center;transform:rotate(360deg);}}
 `;
 
 // ---- Constants ----
@@ -230,6 +231,10 @@ function Windmill({level}){
     {level>=3 && <rect x="24" y="10" width="4" height="24" rx="2" fill="#8B5E3C" stroke={S} strokeWidth={2} transform="rotate(-45,26,22)"/>}
     {level>=4 && <rect x="14" y="50" width="12" height="16" rx="2" fill="#c8923a" stroke={S} strokeWidth={2}/>}
     {level>=4 && <polygon points="14,52 20,42 26,52" fill="#a06828" stroke={S} strokeWidth={2}/>}
+    {level>=4 && <g style={{transformOrigin:"40px 32px",animation:"spin360 3s linear infinite"}}>
+      <rect x="38" y="4" width="4" height="28" rx="2" fill="#8B5E3C" stroke={S} strokeWidth={1}/>
+      <rect x="18" y="30" width="44" height="4" rx="2" fill="#8B5E3C" stroke={S} strokeWidth={1}/>
+    </g>}
     {level>=5 && <circle cx="40" cy="32" r="4" fill="#FFD600" stroke={S} strokeWidth={1}/>}
     {level>=5 && <rect x="16" y="58" width="10" height="8" rx="1" fill="#87CEEB" stroke={S} strokeWidth={1}/>}
     {level>=5 && <path d="M30 52 Q40 46 50 52" fill="none" stroke="#FFD600" strokeWidth="2"/>}
@@ -327,7 +332,7 @@ function VillageBG(){
     stars.push(<circle key={i} cx={cx} cy={cy} r={i%3===0?2:1.2} fill="#fff" style={{animation:`twinkle ${1.5+i*0.2}s infinite`,animationDelay:`${i*0.13}s`}}/>);
   });
 
-  return <svg viewBox="0 0 420 700" width="420" height="700" xmlns="http://www.w3.org/2000/svg">
+  return <svg viewBox="0 0 420 700" width="100%" style={{display:"block"}} xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#0a0618"/>
@@ -529,15 +534,17 @@ function UpgradePanel({building, coins, buildings, onUpgrade, onClose}){
 }
 
 // ---- Slot Screen ----
-function SlotScreen({coins, spins, bet, setBet, shield, reels, spinning, onSpin, onSpinDown, onSpinUp, onNav}){
+function SlotScreen({coins, spins, bet, setBet, shield, village, reels, spinning, onSpinDown, onSpinUp, onNav}){
   const lightPositions = [
     {top:"6%",left:"12%"},{top:"6%",left:"30%"},{top:"6%",left:"50%"},{top:"6%",left:"70%"},{top:"6%",left:"88%"},
     {top:"50%",left:"96%"},{top:"94%",left:"88%"},{top:"94%",left:"70%"},{top:"94%",left:"50%"},{top:"94%",left:"30%"},
     {top:"50%",left:"2%"},
   ];
 
+  function handleTouchStart(e){ e.preventDefault(); onSpinDown(); }
+  function handleTouchEnd(e){ e.preventDefault(); onSpinUp(); }
+
   return <div style={{display:"flex",flexDirection:"column",height:"100vh",maxHeight:"100vh"}}>
-    <style>{CSS}</style>
     {/* HUD */}
     <div className="hud">
       <div className="hud-block">
@@ -548,7 +555,7 @@ function SlotScreen({coins, spins, bet, setBet, shield, reels, spinning, onSpin,
         <div><div className="hud-val">{coins}</div><div className="hud-label">Erme</div></div>
       </div>
       <div className="hud-block">
-        <div className="village-badge">Falu {"\u00a0"}1</div>
+        <div className="village-badge">Falu {village}</div>
         {shield && <div className="shield-hud">🛡️</div>}
       </div>
       <div className="hud-block">
@@ -589,8 +596,8 @@ function SlotScreen({coins, spins, bet, setBet, shield, reels, spinning, onSpin,
             disabled={spins<1}
             onMouseDown={onSpinDown}
             onMouseUp={onSpinUp}
-            onTouchStart={onSpinDown}
-            onTouchEnd={onSpinUp}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
           >
             {spins<1 ? "Var..." : spinning ? "..." : "SPIN"}
           </button>
@@ -604,38 +611,51 @@ function SlotScreen({coins, spins, bet, setBet, shield, reels, spinning, onSpin,
 }
 
 // ---- Village Screen ----
-function VillageScreen({coins, buildings, onBuildingTap, selBuilding, onUpgrade, onClosePanel, onNav}){
-  return <div style={{position:"relative",width:"100%",flex:1}}>
-    <div style={{position:"relative",width:"100%"}}>
-      <VillageBG/>
-      {SLOTS.map(slot=>{
-        const lvl = buildings[slot.id];
-        const Comp = BUILDING_COMPONENTS[slot.id];
-        return <div
-          key={slot.id}
-          className="building-slot"
-          style={{left:slot.left, top:slot.top}}
-          onClick={()=>onBuildingTap(slot)}
-        >
-          {lvl===0
-            ? <div className="building-placeholder">+</div>
-            : <Comp level={lvl}/>
-          }
-        </div>;
-      })}
+function VillageScreen({coins, village, buildings, onBuildingTap, selBuilding, onUpgrade, onClosePanel, onNav}){
+  return <div style={{display:"flex",flexDirection:"column",height:"100vh",maxHeight:"100vh"}}>
+    {/* Mini HUD */}
+    <div className="hud" style={{flexShrink:0}}>
+      <div className="hud-block">
+        <svg width="24" height="24" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#FFD600" stroke="#c8960a" strokeWidth="2"/>
+          <text x="14" y="19" textAnchor="middle" fontSize="13" fill="#8B5E3C" fontFamily="Arial" fontWeight="bold">$</text>
+        </svg>
+        <div><div className="hud-val">{coins}</div><div className="hud-label">Erme</div></div>
+      </div>
+      <div className="village-badge" style={{fontSize:"15px",padding:"4px 14px"}}>Falu {village}</div>
+      <button className="nav-btn" style={{margin:0,padding:"8px 20px",fontSize:"14px"}} onClick={onNav}>Forgatas</button>
     </div>
-    {selBuilding && (
-      <UpgradePanel
-        building={selBuilding}
-        coins={coins}
-        buildings={buildings}
-        onUpgrade={onUpgrade}
-        onClose={onClosePanel}
-      />
-    )}
-    <button className="nav-btn" style={{position:"absolute",bottom:"12px",left:"50%",transform:"translateX(-50%)",zIndex:10}} onClick={onNav}>
-      Forgatogep
-    </button>
+    {/* Village map */}
+    <div style={{position:"relative",flex:1,overflowY:"auto",overflowX:"hidden"}}>
+      <div style={{position:"relative",width:"100%"}}>
+        <VillageBG/>
+        {SLOTS.map(slot=>{
+          const lvl = buildings[slot.id];
+          const Comp = BUILDING_COMPONENTS[slot.id];
+          return <div
+            key={slot.id}
+            className="building-slot"
+            style={{left:slot.left, top:slot.top}}
+            onClick={()=>onBuildingTap(slot)}
+          >
+            {lvl===0
+              ? <div className="building-placeholder">+</div>
+              : <Comp level={lvl}/>
+            }
+          </div>;
+        })}
+      </div>
+      {selBuilding && <>
+        <div style={{position:"fixed",inset:0,zIndex:199}} onClick={onClosePanel}/>
+        <UpgradePanel
+          building={selBuilding}
+          coins={coins}
+          buildings={buildings}
+          onUpgrade={onUpgrade}
+          onClose={onClosePanel}
+        />
+      </>}
+    </div>
   </div>;
 }
 
@@ -675,7 +695,6 @@ export default function App(){
   const [screen, setScreen] = useState("slot");
   const [spinning, setSpinning] = useState(false);
   const [reels, setReels] = useState([0,0,0]);
-  const [result, setResult] = useState(null);
   const [raidOpen, setRaidOpen] = useState(false);
   const [attackOpen, setAttackOpen] = useState(false);
   const [selBuilding, setSelBuilding] = useState(null);
@@ -688,14 +707,12 @@ export default function App(){
   const spinsRef = useRef(50);
   const betRef = useRef(1);
   const villageRef = useRef(1);
-  const shieldRef = useRef(false);
 
   // Keep refs in sync
   useEffect(()=>{ spinningRef.current = spinning; },[spinning]);
   useEffect(()=>{ spinsRef.current = spins; },[spins]);
   useEffect(()=>{ betRef.current = bet; },[bet]);
   useEffect(()=>{ villageRef.current = village; },[village]);
-  useEffect(()=>{ shieldRef.current = shield; },[shield]);
 
   // Toast helper
   const showToast = useCallback((msg)=>{
@@ -830,12 +847,12 @@ export default function App(){
     {screen==="slot"
       ? <SlotScreen
           coins={coins} spins={spins} bet={bet} setBet={setBet}
-          shield={shield} reels={reels} spinning={spinning}
-          onSpin={doSpin} onSpinDown={onSpinDown} onSpinUp={onSpinUp}
+          shield={shield} village={village} reels={reels} spinning={spinning}
+          onSpinDown={onSpinDown} onSpinUp={onSpinUp}
           onNav={()=>setScreen("village")}
         />
       : <VillageScreen
-          coins={coins} buildings={buildings}
+          coins={coins} village={village} buildings={buildings}
           onBuildingTap={onBuildingTap}
           selBuilding={selBuilding}
           onUpgrade={onUpgrade}
